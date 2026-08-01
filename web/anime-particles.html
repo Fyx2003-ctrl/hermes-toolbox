@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>二次元粒子系统 - 手机网页版</title>
+<style>
+  html, body { margin:0; padding:0; background:#080a12; overflow:hidden; height:100%;
+               touch-action:none; -webkit-user-select:none; user-select:none; }
+  canvas { display:block; width:100vw; height:100vh; }
+  #hud { position:fixed; top:10px; left:12px; color:#8c96aa; font:12px system-ui, sans-serif;
+         pointer-events:none; z-index:9; line-height:1.7; text-shadow:0 1px 3px #000; }
+  .btnrow { position:fixed; bottom:14px; left:0; right:0; display:flex; justify-content:center;
+            gap:10px; z-index:9; }
+  .btn { background:rgba(255,255,255,.12); color:#dfe6f2; border:1px solid rgba(255,255,255,.25);
+         border-radius:22px; padding:8px 16px; font:13px system-ui, sans-serif;
+         -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">👆 按住散开 / 点击爆炸<br>📷 可上传自己的图片</div>
+<div class="btnrow">
+  <button class="btn" id="fileBtn">📷 选图片</button>
+  <button class="btn" id="cAnime">🎨 全彩图</button>
+  <button class="btn" id="cSketch">✏️ 简笔画</button>
+  <button class="btn" id="cLine">✒️ 线条</button>
+  <button class="btn" id="burstBtn">💥 爆炸</button>
+</div>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+<script>
+"use strict";
+/* ================= 内置简笔画角色生成器 ================= */
+const PRESETS = {
+  miku:   { hair:'#00c8c8', hair2:'#00e6e6', eye:'#28a0ff', eye2:'#28a0ff', ribbon:'#ff7896', top:'#28283c' },
+  kurumi: { hair:'#1e1e28', hair2:'#c8283c', eye:'#ff503c', eye2:'#ffc83c', ribbon:'#14141e', top:'#3c141e' },
+  blonde: { hair:'#ffd76e', hair2:'#ffe6a0', eye:'#3c8cff', eye2:'#3c8cff', ribbon:'#ff648c', top:'#5078c8' },
+  sakura: { hair:'#ffaac8', hair2:'#ffc8e1', eye:'#5adc96', eye2:'#5adc96', ribbon:'#ff78aa', top:'#ffbed2' }
+};
+const SKIN = '#ffe0d6';
+
+function drawCharacter(name) {
+  const p = PRESETS[name] || PRESETS.blonde;
+  const W = 300, H = 405;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const d = cv.getContext('2d');
+  const cx = W / 2;
+  const twin = (name === 'miku' || name === 'kurumi');
+  d.fillStyle = p.hair;
+  d.beginPath(); d.moveTo(cx-78,70); d.lineTo(cx-60,205); d.lineTo(cx+60,205); d.lineTo(cx+78,70); d.closePath(); d.fill();
+  const ell = (x,y,rx,ry) => { d.beginPath(); d.ellipse(x,y,rx,ry,0,0,Math.PI*2); d.fill(); };
+  const poly = (pts) => { d.beginPath(); d.moveTo(pts[0][0],pts[0][1]);
+    for (let i=1;i<pts.length;i++) d.lineTo(pts[i][0],pts[i][1]); d.closePath(); d.fill(); };
+  if (twin) {
+    d.fillStyle = p.hair;  ell(cx-95,150,42,105);
+    d.fillStyle = p.hair2; ell(cx+95,150,42,105);
+    d.fillStyle = p.ribbon; ell(cx-95,245,16,10); ell(cx+95,245,16,10);
+  } else {
+    d.fillStyle = p.hair;  ell(cx-80,150,34,95);
+    d.fillStyle = p.hair2; ell(cx+80,150,34,95);
+  }
+  d.fillStyle = p.top;
+  poly([[cx-62,208],[cx-52,H-8],[cx+52,H-8],[cx+62,208]]);
+  d.fillStyle = '#fff';
+  poly([[cx-30,208],[cx,242],[cx+30,208]]);
+  d.fillStyle = p.ribbon;
+  ell(cx-16,255,15,9); ell(cx+16,255,15,9);
+  d.fillStyle = '#f03c6e'; ell(cx,255,8,8);
+  d.fillStyle = SKIN;
+  ell(cx,88,62,58);
+  d.fillRect(cx-10,140,20,32);
+  d.fillStyle = p.hair;
+  d.beginPath(); d.arc(cx,80,70,Math.PI,0); d.closePath(); d.fill();
+  poly([[cx-62,52],[cx-40,96],[cx-24,55]]);
+  poly([[cx-30,55],[cx-6,100],[cx+8,55]]);
+  poly([[cx+2,55],[cx+26,96],[cx+44,52]]);
+  d.fillRect(cx-66,80,20,38); d.fillRect(cx+46,80,20,38);
+  d.strokeStyle = p.hair; d.lineWidth = 7; d.lineCap='round';
+  d.beginPath(); d.arc(cx,30,14,Math.PI*1.1,Math.PI*1.9); d.stroke();
+  const eye = (ex,ec) => {
+    d.fillStyle='#fff'; ell(ex,92,16,19);
+    d.fillStyle=ec;     ell(ex,95,12,15);
+    d.fillStyle='#14141e'; ell(ex-2,93,5,7);
+    d.fillStyle='#fff'; ell(ex-5,89,5,4);
+  };
+  eye(cx-26,p.eye); eye(cx+26,p.eye2);
+  d.strokeStyle='rgba(90,60,60,.9)'; d.lineWidth=4;
+  d.beginPath(); d.arc(cx-27,82,17,Math.PI*1.1,Math.PI*1.9); d.stroke();
+  d.beginPath(); d.arc(cx+27,82,17,Math.PI*1.1,Math.PI*1.9); d.stroke();
+  d.fillStyle='rgba(255,130,150,.5)'; ell(cx-46,108,12,6); ell(cx+46,108,12,6);
+  d.strokeStyle='rgba(180,80,90,.9)'; d.lineWidth=3;
+  d.beginPath(); d.arc(cx,111,8,Math.PI*0.15,Math.PI*0.85); d.stroke();
+  return cv;
+}
+
+/* ================= 粒子系统 ================= */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha:false });
+let W, H, dpr;
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);   // 满分辨率渲染保证清晰
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  imgData = null;   // 强制重建像素缓冲
+}
+window.addEventListener('resize', resize);
+
+const CHARACTER = (new URLSearchParams(location.search).get('c')) || 'miku';
+const MAXP = 120000;         // 粒子上限: 80000 -> 120000
+const SAMPLE_W = 560;        // 上传图采样宽度: 480 -> 560
+const sizeBase = 1.6;        // 粒子基础尺寸
+
+/* 从像素数据生成粒子 (核心: 背景去除 + 全像素采样 + 随机抽样)
+   mode: 'bg'  = 剔除背景色, 保留主体 (人物模式)
+         'line'= 双阈值线条检测: 剔除深背景 + 剔除浅色填充, 只留线条
+*/
+function buildFromPixels(nw, nh, sdata, bg, tol, mode) {
+  const scale = (H * 0.72) / nh;
+  const ox = (W - nw * scale) / 2;
+  const oy = (H - nh * scale) / 2;
+  const pts = [];
+  const bgLum = 0.3*bg[0] + 0.59*bg[1] + 0.11*bg[2];
+  const lo = Math.max(20, bgLum + 30);   // 线条模式低阈值 (背景之上)
+  const hi = 165;                        // 线条模式高阈值 (填充色以下)
+  for (let y = 0; y < nh; y++) {
+    for (let x = 0; x < nw; x++) {
+      const i = (y * nw + x) * 4;
+      if (sdata[i+3] <= 40) continue;                    // 透明像素跳过
+      if (mode === 'line') {
+        const lum = 0.3*sdata[i] + 0.59*sdata[i+1] + 0.11*sdata[i+2];
+        if (lum < lo || lum > hi) continue;              // 深背景/浅填充 → 跳过
+      } else if (tol >= 0) {                             // 'bg' 模式: 背景色剔除
+        const dist = Math.abs(sdata[i]-bg[0]) + Math.abs(sdata[i+1]-bg[1]) + Math.abs(sdata[i+2]-bg[2]);
+        if (dist <= tol) continue;
+      }
+      pts.push({ tx: ox + x * scale, ty: oy + y * scale,
+                 r: sdata[i], g: sdata[i+1], b: sdata[i+2],
+                 phase: Math.random()*Math.PI*2,
+                 delay: Math.pow(Math.random(), 1.5) });
+    }
+  }
+  // Fisher-Yates 随机抽样, 保证全角色均匀覆盖
+  while (pts.length > MAXP) {
+    const j = Math.floor(Math.random() * pts.length);
+    pts[j] = pts[pts.length - 1];
+    pts.pop();
+  }
+  return pts;
+}
+
+/* 内置角色 → 粒子 */
+function buildCharacter() {
+  const src = drawCharacter(CHARACTER);
+  const d = src.getContext('2d');
+  const data = d.getImageData(0, 0, src.width, src.height).data;
+  return buildFromPixels(src.width, src.height, data, [0,0,0], -1);
+}
+
+/* 上传图片 → 粒子 (自动去背景 + 缩小) */
+let currentImg = null;   // 当前图片数据, 供模式切换复用
+
+function buildFromDataURL(dataURL, label, mode) {
+  const img = new Image();
+  img.onload = () => {
+    const tw = img.naturalWidth, th = img.naturalHeight;
+      const tcv = document.createElement('canvas'); tcv.width = tw; tcv.height = th;
+      const tc = tcv.getContext('2d');
+      tc.drawImage(img, 0, 0);
+      const tdata = tc.getImageData(0, 0, tw, th).data;
+      // 背景参考色 = 四角均值
+      let r=0,g=0,b=0,cnt=0;
+      const acc = (x,y) => { const i=(y*tw+x)*4; r+=tdata[i]; g+=tdata[i+1]; b+=tdata[i+2]; cnt++; };
+      const K = Math.min(6, tw>>1, th>>1);
+      for (let k=0;k<K;k++){ acc(k,k); acc(tw-1-k,k); acc(k,th-1-k); acc(tw-1-k,th-1-k); }
+      const bg = [r/cnt, g/cnt, b/cnt];
+      // 缩小到宽 ≤ SAMPLE_W
+      const sc = Math.min(1, SAMPLE_W/tw);
+      const nw = Math.max(1, Math.round(tw*sc)), nh = Math.max(1, Math.round(th*sc));
+      const scv = document.createElement('canvas'); scv.width=nw; scv.height=nh;
+      const sctx = scv.getContext('2d');
+      sctx.drawImage(tcv, 0, 0, nw, nh);
+      const sdata = sctx.getImageData(0, 0, nw, nh).data;
+      currentImg = { nw, nh, sdata, bg, label };
+      applyMode(mode || 'bg');
+  };
+  img.src = dataURL;
+}
+
+/* 按模式生成粒子: 'bg' 人物模式 | 'line' 线条模式 */
+function applyMode(mode) {
+  if (!currentImg) return;
+  const { nw, nh, sdata, bg, label } = currentImg;
+  const pts = buildFromPixels(nw, nh, sdata, bg, 48*1.2, mode);
+  initFromPts(pts);
+  document.getElementById('hud').textContent =
+    `${label}${mode==='line' ? ' · 线条' : ''} (${pts.length} 粒子)`;
+}
+
+/* 内置图片 (base64 注入) 或上传文件 → 粒子 */
+function buildFromImageFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => buildFromDataURL(e.target.result, '📷 已载入你的图片');
+  reader.readAsDataURL(file);
+}
+
+const parts = [];
+let cx = 0, cy = 0;
+
+function initFromPts(pts) {
+  parts.length = 0;
+  for (const p of pts) {
+    parts.push({ x: Math.random()*W, y: Math.random()*H, vx:0, vy:0,
+                 tx:p.tx, ty:p.ty, r:p.r, g:p.g, b:p.b,
+                 phase:p.phase, delay:p.delay });
+  }
+  cx = pts.reduce((s,p)=>s+p.tx,0)/pts.length;
+  cy = pts.reduce((s,p)=>s+p.ty,0)/pts.length;
+  // 预计算: 呼吸距离相位 + 流光位置相位 + 旋转角 (省每帧三角函数)
+  for (const p of parts) {
+    const dist = Math.abs(p.tx-cx) + Math.abs(p.ty-cy);
+    p.dc = Math.cos(dist*0.02); p.ds = Math.sin(dist*0.02);
+    p.sum = (p.tx + p.ty) * 0.012;
+    p.sp = Math.sin(p.phase); p.cp = Math.cos(p.phase);
+    p.sp2 = Math.sin(p.phase*1.3); p.cp2 = Math.cos(p.phase*1.3);
+  }
+  mode = 'assemble'; T = 0; burstT = 0; idleT = 0;
+}
+
+let mode = 'assemble';   // assemble | idle | burst
+let T = 0, burstT = 0, idleT = 0;
+const mx = {x:-9999, y:-9999, active:false};
+
+function burst(){
+  if (mode === 'burst') return;
+  mode = 'burst'; burstT = 0;
+  for (const p of parts) {
+    const a = Math.random()*Math.PI*2;
+    const sp = 120 + Math.random()*600;
+    p.vx = Math.cos(a)*sp; p.vy = Math.sin(a)*sp - 200;
+  }
+}
+
+function update(dt) {
+  T += dt;
+  if (mode === 'burst') {
+    burstT += dt;
+    const g = 500*dt, damp = 1 - 1.6*dt;
+    for (const p of parts) {
+      p.vy += g; p.vx *= damp; p.vy *= damp;
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      if (p.y > H+20) { p.y = H+20; p.vy *= -0.35; }
+    }
+    if (burstT > 2.6) { mode='assemble'; T=0; }
+    return;
+  }
+  if (mode === 'assemble') {
+    const k = 1 - Math.exp(-3.2*dt);
+    let allDone = true;
+    for (const p of parts) {
+      if (p.delay <= T) {
+        p.x += (p.tx - p.x)*k; p.y += (p.ty - p.y)*k;
+        p.vx *= (1-2*dt); p.vy *= (1-2*dt);
+        p.x += p.vx*dt; p.y += p.vy*dt;
+      } else allDone = false;
+    }
+    if (T > 2.4) { mode='idle'; idleT=0; }
+    return;
+  }
+  // idle (复数旋转优化: 每粒子无三角函数)
+  idleT += dt;
+  const wob = 1.6*Math.sin(idleT*1.8)*0.9;
+  const sa = Math.sin(idleT*1.2), ca = Math.cos(idleT*1.2);
+  const sb = Math.sin(idleT*1.35), cb = Math.cos(idleT*1.35);
+  for (const p of parts) {
+    p.x = p.tx + (sa*p.cp + ca*p.sp)*wob;
+    p.y = p.ty + (cb*p.cp2 - sb*p.sp2)*wob;
+  }
+  if (mx.active) {
+    const R = Math.max(W,H)*0.22, R2 = R*R;
+    for (const p of parts) {
+      const dx = p.x - mx.x, dy = p.y - mx.y;
+      const d2 = dx*dx + dy*dy;
+      if (d2 < R2) {
+        const d = Math.sqrt(d2)+1e-5;
+        const f = 4200*(1-d/R)/d;
+        p.vx += (dx/d)*f; p.vy += (dy/d)*f;
+      }
+    }
+    for (const p of parts) { p.x += p.vx*dt; p.y += p.vy*dt;
+                             p.vx *= (1-4*dt); p.vy *= (1-4*dt); }
+  }
+}
+
+/* ---- 像素级批量渲染 (ImageData, 支持 4 万+ 粒子) ---- */
+let imgData = null, pxBuf = null, prevIdx = [];
+function ensureBuffer() {
+  const w = canvas.width, h = canvas.height;
+  if (!imgData || imgData.width !== w) {
+    imgData = ctx.createImageData(w, h);
+    pxBuf = imgData.data;
+    prevIdx = [];
+  }
+  return [w, h];
+}
+
+function draw() {
+  const [cw, ch] = ensureBuffer();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#080a12'; ctx.fillRect(0, 0, cw, ch);
+  // 清除上帧粒子像素
+  for (const i of prevIdx) { pxBuf[i]=0; pxBuf[i+1]=0; pxBuf[i+2]=0; pxBuf[i+3]=0; }
+  prevIdx.length = 0;
+  const f = mode==='burst' ? Math.max(0, 1-burstT/3) : 1;
+  const cw4 = cw * 4;
+  // 预计算 (idle 呼吸/流光): 每粒子 0-2 个三角函数
+  const sw2 = Math.sin(T*2), cw2 = Math.cos(T*2);
+  const sw3 = Math.sin(T*3), cw3 = Math.cos(T*3);
+  const C2 = Math.cos(2.1), S2 = Math.sin(2.1);
+  const C4 = Math.cos(4.2), S4 = Math.sin(4.2);
+  for (const p of parts) {
+    let r=p.r, g=p.g, b=p.b, two = false;
+    if (mode === 'idle') {
+      const s = sizeBase * (1 + 0.28*(sw2*p.dc + cw2*p.ds));   // 呼吸
+      const wave = T*3 + p.sum;                                 // 流光
+      const sv = Math.sin(wave), cv = Math.cos(wave);
+      r = p.r*(1+0.14*sv);
+      g = p.g*(1+0.14*(sv*C2 + cv*S2));
+      b = p.b*(1+0.14*(sv*C4 + cv*S4));
+      two = s > 2.1;                      // 呼吸峰值粒子画 2x2 更亮
+    } else if (mode === 'assemble') { r*=0.5; g*=0.5; b*=0.5; }
+    const xi = (p.x*dpr)|0, yi = (p.y*dpr)|0;
+    if (xi < 0 || yi < 0 || xi >= cw || yi >= ch) continue;
+    const idx = yi * cw4 + xi * 4;
+    pxBuf[idx]   = r*f;
+    pxBuf[idx+1] = g*f;
+    pxBuf[idx+2] = b*f;
+    pxBuf[idx+3] = 255;
+    prevIdx.push(idx);
+    if (two && xi+1 < cw && yi+1 < ch) {
+      const i2 = idx+4, i3 = idx+cw4, i4 = i3+4;
+      pxBuf[i2]=r*f; pxBuf[i2+1]=g*f; pxBuf[i2+2]=b*f; pxBuf[i2+3]=255;
+      pxBuf[i3]=r*f; pxBuf[i3+1]=g*f; pxBuf[i3+2]=b*f; pxBuf[i3+3]=255;
+      pxBuf[i4]=r*f; pxBuf[i4+1]=g*f; pxBuf[i4+2]=b*f; pxBuf[i4+3]=255;
+      prevIdx.push(i2, i3, i4);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  update(dt); draw();
+  requestAnimationFrame(loop);
+}
+
+/* ---- 交互: 触摸 + 鼠标 + 按钮 ---- */
+canvas.addEventListener('touchstart', (e)=>{
+  e.preventDefault();
+  const t = e.touches[0];
+  mx.x = t.clientX; mx.y = t.clientY; mx.active = true;
+}, {passive:false});
+canvas.addEventListener('touchmove', (e)=>{
+  e.preventDefault();
+  const t = e.touches[0];
+  mx.x = t.clientX; mx.y = t.clientY; mx.active = true;
+}, {passive:false});
+canvas.addEventListener('touchend', (e)=>{ e.preventDefault(); mx.active = false; }, {passive:false});
+canvas.addEventListener('mousemove', (e)=>{ mx.x=e.clientX; mx.y=e.clientY; mx.active=true; });
+canvas.addEventListener('mouseleave', ()=>{ mx.active=false; });
+canvas.addEventListener('click', burst);
+document.getElementById('burstBtn').addEventListener('click', burst);
+document.getElementById('fileBtn').addEventListener('click', ()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if (f) buildFromImageFile(f);
+});
+// 内置图片按钮 (仅当 base64 数据存在时显示)
+if (window.BUILTIN_IMAGES) {
+  const btn = document.getElementById('cAnime'), btn2 = document.getElementById('cSketch');
+  btn.style.display = BUILTIN_IMAGES.anime ? 'inline-block' : 'none';
+  btn2.style.display = BUILTIN_IMAGES.sketch ? 'inline-block' : 'none';
+  btn.onclick = () => BUILTIN_IMAGES.anime && buildFromDataURL(BUILTIN_IMAGES.anime, '🎨 全彩图', 'bg');
+  btn2.onclick = () => BUILTIN_IMAGES.sketch && buildFromDataURL(BUILTIN_IMAGES.sketch, '✏️ 简笔画', 'bg');
+} else {
+  document.getElementById('cAnime').style.display = 'none';
+  document.getElementById('cSketch').style.display = 'none';
+}
+// 线条模式: 对当前图片只提取线条轮廓
+document.getElementById('cLine').addEventListener('click', () => applyMode('line'));
+
+resize(); initFromPts(buildCharacter()); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
