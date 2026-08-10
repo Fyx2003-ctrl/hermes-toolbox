@@ -19,8 +19,13 @@ toolbox/
 ├── tools/                 # 🐍 Python 自动化工具
 │   ├── update_projects.py #   GitHub 开源项目周检 (更新 Excel)
 │   └── cron_update.sh     #   cron 包装脚本
+├── AI-创作工具链.md       # 🎨 AI公众号+漫画自动化管线 (见下方)
 └── github_projects.xlsx   # 📊 开源项目汇总表 (已复现/未复现/待验证)
 ```
+
+## 🎨 AI 创作工具链 (2026-08 新增)
+
+详见 [`AI-创作工具链.md`](AI-创作工具链.md) — 公众号自动生成(热搜→深挖→三遍工序) + AI漫画(古籍→分镜→参考图锁定生图→排版)。
 
 ## 🛠️ 脚本说明
 
